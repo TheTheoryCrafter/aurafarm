@@ -83,19 +83,31 @@ class FaceRecognitionService {
 
   Person? findBestMatch(List<double> embedding, List<Person> people) {
     double bestScore = 0;
+    double secondBestScore = 0;
     Person? bestMatch;
     for (final person in people) {
       if (person.faceEmbeddings.isEmpty) continue;
+      double personBestScore = 0;
       for (final stored in person.faceEmbeddings) {
         final score = _cosineSimilarity(embedding, stored);
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = person;
-        }
+        if (score > personBestScore) personBestScore = score;
+      }
+      if (personBestScore > bestScore) {
+        secondBestScore = bestScore;
+        bestScore = personBestScore;
+        bestMatch = person;
+      } else if (personBestScore > secondBestScore) {
+        secondBestScore = personBestScore;
       }
     }
-    if (bestScore > 0.4) debugPrint('Recognition: ${bestMatch?.name} score=${bestScore.toStringAsFixed(3)} threshold=${AppConstants.recognitionThreshold}');
-    return bestScore >= AppConstants.recognitionThreshold ? bestMatch : null;
+    final margin = bestScore - secondBestScore;
+    if (bestScore > 0.4) {
+      debugPrint('Recognition: ${bestMatch?.name} score=${bestScore.toStringAsFixed(3)} '
+          'margin=${margin.toStringAsFixed(3)} threshold=${AppConstants.recognitionThreshold}');
+    }
+    if (bestScore < AppConstants.recognitionThreshold) return null;
+    if (margin < AppConstants.recognitionMargin) return null;
+    return bestMatch;
   }
 
   List<double> averageEmbeddings(List<List<double>> embeddings) {

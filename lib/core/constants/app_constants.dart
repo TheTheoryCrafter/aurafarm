@@ -2,7 +2,9 @@ class AppConstants {
   AppConstants._();
 
   // Face recognition
-  static const double recognitionThreshold = 0.55;
+  static const double recognitionThreshold = 0.7;
+  static const double recognitionMargin = 0.08; // best match must beat runner-up by this much
+  static const int requiredConsecutiveMatches = 3; // consecutive frames before switching person
   static const int frameThrottle = 10; // process every Nth frame
   static const int faceCaptures = 5;   // captures per registration
   static const int lossTimeoutMs = 2000; // ms before dismissing recognition badge

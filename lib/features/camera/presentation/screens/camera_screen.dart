@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:aurafarm/core/constants/app_constants.dart';
 import 'package:aurafarm/core/theme/app_colors.dart';
 import 'package:aurafarm/core/theme/app_text_styles.dart';
 import 'package:aurafarm/features/camera/providers/camera_provider.dart';
@@ -23,12 +24,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
   final _faceDetector = FaceDetector(options: FaceDetectorOptions(
     enableTracking: true,
     minFaceSize: 0.15,
-    performanceMode: FaceDetectorMode.fast,
+    performanceMode: FaceDetectorMode.accurate,
   ));
 
   List<Face> _faces = [];
   int _frameCount = 0;
   bool _isProcessing = false;
+
+  String? _pendingPersonId;
+  int _pendingMatchCount = 0;
 
   @override
   void initState() {
@@ -122,7 +126,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       final faces = await _faceDetector.processImage(inputImage);
       if (mounted) setState(() => _faces = faces);
 
-      if (faces.isEmpty) return;
+      if (faces.isEmpty) {
+        _resetPendingMatch();
+        return;
+      }
 
       // Try to recognize the first face
       final people = ref.read(peopleProvider).valueOrNull ?? [];
@@ -131,15 +138,36 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
       final embedding = await FaceRecognitionService.instance.generateEmbedding(
         image, faces.first.boundingBox, sensorRotation: sensorOrientation,
       );
-      if (embedding != null) {
-        final match = FaceRecognitionService.instance.findBestMatch(embedding, people);
-        if (match != null) {
-          ref.read(recognitionProvider.notifier).onPersonRecognized(match);
-        }
+      if (embedding == null) {
+        _resetPendingMatch();
+        return;
+      }
+
+      final match = FaceRecognitionService.instance.findBestMatch(embedding, people);
+      if (match == null) {
+        _resetPendingMatch();
+        return;
+      }
+
+      // Require several consecutive frames agreeing on the same person before
+      // switching — a single noisy frame shouldn't be enough to trigger a song change.
+      if (match.id == _pendingPersonId) {
+        _pendingMatchCount++;
+      } else {
+        _pendingPersonId = match.id;
+        _pendingMatchCount = 1;
+      }
+      if (_pendingMatchCount >= AppConstants.requiredConsecutiveMatches) {
+        ref.read(recognitionProvider.notifier).onPersonRecognized(match);
       }
     } finally {
       _isProcessing = false;
     }
+  }
+
+  void _resetPendingMatch() {
+    _pendingPersonId = null;
+    _pendingMatchCount = 0;
   }
 
   @override
